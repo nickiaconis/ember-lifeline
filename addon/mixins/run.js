@@ -45,6 +45,7 @@ export default Mixin.create({
     this._super(...arguments);
 
     this._pendingTimers = undefined;
+    this._pendingSchedules = undefined;
     this._pendingDebounces = undefined;
     this._pollerLabels = undefined;
   },
@@ -156,23 +157,27 @@ export default Mixin.create({
     assert(`Called \`scheduleTask\` without a string as the first argument on ${this}.`, typeof queue === 'string');
     assert(`Called \`scheduleTask\` on destroyed object: ${this}.`, !this.isDestroyed);
 
-    let type = typeof callbackOrName;
-    let pendingTimers = this._getOrAllocateArray('_pendingTimers');
+    let pendingSchedules = this._getOrAllocateArray('_pendingSchedules');
+    let scheduleInfo = {
+      fnOrName: callbackOrName
+    };
 
     let cancelId = run.schedule(queue, this, () => {
-      let cancelIndex = pendingTimers.indexOf(cancelId);
-      pendingTimers.splice(cancelIndex, 1);
+      let infoIndex = pendingSchedules.indexOf(scheduleInfo);
+      pendingSchedules.splice(infoIndex, 1);
+      let { fnOrName } = scheduleInfo;
+      let type = typeof fnOrName;
 
       if (type === 'function') {
-        callbackOrName.call(this, ...args);
-      } else if (type === 'string' && this[callbackOrName]) {
-        this[callbackOrName](...args);
+        fnOrName.call(this, ...args);
+      } else if (type === 'string' && this[fnOrName]) {
+        this[fnOrName](...args);
       } else {
         throw new Error('You must pass a callback function or method name to `scheduleTask`.');
       }
     });
 
-    pendingTimers.push(cancelId);
+    pendingSchedules.push(scheduleInfo);
     return cancelId;
   },
 
@@ -421,6 +426,7 @@ export default Mixin.create({
     this._super(...arguments);
 
     cancelTimers(this._pendingTimers);
+    cancelScheduledTasks(this._pendingSchedules);
     cancelDebounces(this._pendingDebounces);
     clearPollers(this._pollerLabels);
   },
@@ -457,6 +463,20 @@ function cancelPoll(label) {
   queuedPollTasks[label] = undefined;
 }
 
+function cancelScheduledTasks(infos) {
+  if (!infos || !infos.length) {
+    return;
+  }
+
+  for (let i = 0; i < infos.length; i++) {
+    cancelScheduledTask(infos[i]);
+  }
+}
+
+function cancelScheduledTask(info) {
+  info.fnOrName = noop;
+}
+
 function cancelTimers(timers) {
   if (!timers || !timers.length) {
     return;
@@ -487,3 +507,5 @@ function cancelDebounce(pendingDebounces, name) {
   let { cancelId } = pendingDebounces[name];
   run.cancel(cancelId);
 }
+
+function noop() {}
