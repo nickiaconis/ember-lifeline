@@ -124,7 +124,13 @@ export default Mixin.create({
    @public
    */
   cancelTask(cancelId) {
-    cancelTimer(cancelId);
+    let pendingSchedules = this._pendingSchedules;
+    let scheduleInfo = pendingSchedules && pendingSchedules.find((info) => info.cancelId === cancelId);
+    if (scheduleInfo) {
+      cancelScheduledTask(scheduleInfo);
+    } else {
+      cancelTimer(cancelId);
+    }
   },
 
   /**
@@ -158,27 +164,27 @@ export default Mixin.create({
     assert(`Called \`scheduleTask\` on destroyed object: ${this}.`, !this.isDestroyed);
 
     let pendingSchedules = this._getOrAllocateArray('_pendingSchedules');
+
     let scheduleInfo = {
-      fnOrName: callbackOrName
+      fnOrName: callbackOrName,
+      cancelId: run.schedule(queue, this, () => {
+        let infoIndex = pendingSchedules.indexOf(scheduleInfo);
+        pendingSchedules.splice(infoIndex, 1);
+        let { fnOrName } = scheduleInfo;
+        let type = typeof fnOrName;
+
+        if (type === 'function') {
+          fnOrName.call(this, ...args);
+        } else if (type === 'string' && this[fnOrName]) {
+          this[fnOrName](...args);
+        } else {
+          throw new Error('You must pass a callback function or method name to `scheduleTask`.');
+        }
+      })
     };
 
-    let cancelId = run.schedule(queue, this, () => {
-      let infoIndex = pendingSchedules.indexOf(scheduleInfo);
-      pendingSchedules.splice(infoIndex, 1);
-      let { fnOrName } = scheduleInfo;
-      let type = typeof fnOrName;
-
-      if (type === 'function') {
-        fnOrName.call(this, ...args);
-      } else if (type === 'string' && this[fnOrName]) {
-        this[fnOrName](...args);
-      } else {
-        throw new Error('You must pass a callback function or method name to `scheduleTask`.');
-      }
-    });
-
     pendingSchedules.push(scheduleInfo);
-    return cancelId;
+    return scheduleInfo.cancelId;
   },
 
   /**
