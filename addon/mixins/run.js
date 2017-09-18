@@ -1,10 +1,14 @@
 import Ember from 'ember';
+import patchSchedule from 'ember-lifeline/utils/patch-schedule';
 
 const {
   Mixin,
   run,
   assert
 } = Ember;
+
+// patch Ember.run.schedule for Ember < 2.8
+patchSchedule();
 
 let _shouldPollOverride;
 function shouldPoll() {
